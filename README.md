@@ -1,11 +1,11 @@
-## Dreambooth-autodl
+# Dreambooth-autodl
 
 dreambooth autodl 训练脚本。
 修改自 [Nyanko Lepsoni 的 Colab 笔记本](https://colab.research.google.com/drive/17yM4mlPVOFdJE_81oWBz5mXH9cxvhmz8)
 
-### 使用方法
+## 使用方法
 
-#### 直接使用autodl镜像
+### 直接使用autodl镜像
 
 [dreambooth-autodl](https://www.codewithgpu.com/i/Akegarasu/dreambooth-autodl/dreambooth-autodl)
 
