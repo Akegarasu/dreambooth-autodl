@@ -18,8 +18,9 @@ clone本项目后运行 `install.sh`
 ```sh
 git clone https://github.com/Akegarasu/dreambooth-autodl.git
 cd dreambooth-audodl
-chmod +x install.sh
-./install.sh
+bash install.sh
 ```
+
+按照提示安装依赖。
 
 将本项目文件夹移动到 `/autodl-tmp` 后打开 `dreambooth-aki.ipynb` 运行训练
