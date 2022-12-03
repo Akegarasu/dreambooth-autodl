@@ -1,3 +1,4 @@
+git submodule init
 git submodule update
 
 conda create -n diffusers python=3.10
