@@ -41,6 +41,13 @@ try:
 except ImportError:
     pass
 
+try:
+    from PIL import PngImagePlugin
+    LARGE_ENOUGH_NUMBER = 100
+    PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
+except Exception:
+    pass
+
 from accelerate import Accelerator
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
@@ -581,6 +588,12 @@ def parse_args():
         default=False,
         action="store_true",
         help="Enable memory efficient attention when training."
+    )
+    parser.add_argument(
+        "--reinit_scheduler",
+        default=False,
+        action="store_true",
+        help="Reinit scheduler when resume training."
     )
 
     args = parser.parse_args()
@@ -1236,7 +1249,7 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.LANCZOS),
                 transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -1378,7 +1391,7 @@ class AspectRatioDataset(DreamBoothDataset):
             new_w, new_h = w, h
 
         image_transforms = transforms.Compose([
-            transforms.Resize((new_h, new_w), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.Resize((new_h, new_w), interpolation=transforms.InterpolationMode.LANCZOS),
             transforms.CenterCrop((h, w)) if center_crop else transforms.RandomCrop((h, w)),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5])
@@ -1742,6 +1755,7 @@ def main(args):
 
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    unet.to(torch.float32)
 
     if args.xformers:
         unet.set_use_memory_efficient_attention_xformers(True)
@@ -1966,7 +1980,7 @@ def main(args):
         if "optimizer" in state_dict:
             optimizer.load_state_dict(state_dict["optimizer"])
 
-        if "scheduler" in state_dict:
+        if "scheduler" in state_dict and not args.reinit_scheduler:
             lr_scheduler.load_state_dict(state_dict["scheduler"])
 
             last_lr = state_dict["scheduler"]["_last_lr"]
@@ -2040,8 +2054,15 @@ def main(args):
 
             if args.use_ema:
                 ema_path = save_dir / "unet_ema"
-                with ema_unet.average_parameters(unet_unwrapped.parameters()):
+
+                ema_unet.store(unet_unwrapped.parameters())
+                ema_unet.copy_to(unet_unwrapped.parameters())
+
+                # with ema_unet.average_parameters(unet_unwrapped.parameters()):
+                try:
                     unet_unwrapped.save_pretrained(ema_path)
+                finally:
+                    ema_unet.restore(unet_unwrapped.parameters())
             
                 ema_unet.to("cpu", dtype=weight_dtype)
                 torch.cuda.empty_cache()

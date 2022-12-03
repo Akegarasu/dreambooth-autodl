@@ -11,7 +11,7 @@ dreambooth autodl 训练脚本。
 
 ### 手动部署
 
-选择miniconda环境，cuda11.3
+环境选择 Miniconda / conda3 / 3.8(ubuntu20.04) / 11.3
 
 clone本项目后运行 `install.sh`
 
