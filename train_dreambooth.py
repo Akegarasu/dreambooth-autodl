@@ -43,7 +43,7 @@ except ImportError:
 
 try:
     from PIL import PngImagePlugin
-    LARGE_ENOUGH_NUMBER = 100
+    LARGE_ENOUGH_NUMBER = 20
     PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
 except Exception:
     pass
@@ -646,12 +646,15 @@ def parse_args():
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
+    if args.resolution > 512 and args.arb_max_size == (768, 512):
+        args.arb_max_size = (int(max(args.resolution+args.arb_divisible*2, 768)), 512)
+
     return args
 
 
 class DeepDanbooru:
     def __init__(
-        self,
+        self, 
         dd_threshold=0.6,
         dd_alpha_sort=False,
         dd_use_spaces=True,
@@ -818,7 +821,7 @@ class AspectRatioBucket:
         bsz=1,
         world_size=1,
         global_rank=0,
-        max_ar_error=4,
+        max_ar_error=2,
         seed=42,
         dim_limit=1024,
         debug=True,
@@ -1383,7 +1386,7 @@ class AspectRatioDataset(DreamBoothDataset):
             img = img.rotate(90, expand=True)
             x, y = img.size
             
-        if ratio_src > ratio_dst:
+        if ratio_src > ratio_dst: # 1.1 > 0.9 512 < 768
             new_w, new_h = (min_crop, int(min_crop * ratio_src)) if x<y else (int(min_crop * ratio_src), min_crop)
         elif ratio_src < ratio_dst:
             new_w, new_h = (max_crop, int(max_crop / ratio_src)) if x>y else (int(max_crop / ratio_src), max_crop)
@@ -2121,7 +2124,7 @@ def main(args):
 
                 if args.rm_after_wandb_saved:
                     shutil.rmtree(save_dir)
-                    subprocess.run("wandb", "artifact", "cache", "cleanup", "1G")
+                    subprocess.run(["wandb", "artifact", "cache", "cleanup", "1G"])
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
