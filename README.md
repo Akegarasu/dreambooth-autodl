@@ -13,11 +13,16 @@ dreambooth autodl 训练脚本。
 
 环境选择 Miniconda / conda3 / 3.8(ubuntu20.04) / 11.3
 
-clone本项目后运行 `install.sh`
+clone本项目后，首先利用 conda 创建 python 运行环境后再运行 `install.sh`
 
 ```sh
 git clone https://github.com/Akegarasu/dreambooth-autodl.git
 cd dreambooth-audodl
+conda create -n diffusers python=3.10
+conda init bash && source /root/.bashrc
+conda activate diffusers
+conda install ipykernel
+ipython kernel install --user --name=diffusers
 bash install.sh
 ```
 
