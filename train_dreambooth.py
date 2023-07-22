@@ -41,13 +41,6 @@ try:
 except ImportError:
     pass
 
-try:
-    from PIL import PngImagePlugin
-    LARGE_ENOUGH_NUMBER = 20
-    PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
-except Exception:
-    pass
-
 from accelerate import Accelerator
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
@@ -589,12 +582,6 @@ def parse_args():
         action="store_true",
         help="Enable memory efficient attention when training."
     )
-    parser.add_argument(
-        "--reinit_scheduler",
-        default=False,
-        action="store_true",
-        help="Reinit scheduler when resume training."
-    )
 
     args = parser.parse_args()
     resume_from = args.resume_from
@@ -646,15 +633,12 @@ def parse_args():
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    if args.resolution > 512 and args.arb_max_size == (768, 512):
-        args.arb_max_size = (int(max(args.resolution+args.arb_divisible*2, 768)), 512)
-
     return args
 
 
 class DeepDanbooru:
     def __init__(
-        self, 
+        self,
         dd_threshold=0.6,
         dd_alpha_sort=False,
         dd_use_spaces=True,
@@ -821,7 +805,7 @@ class AspectRatioBucket:
         bsz=1,
         world_size=1,
         global_rank=0,
-        max_ar_error=2,
+        max_ar_error=4,
         seed=42,
         dim_limit=1024,
         debug=True,
@@ -1252,7 +1236,7 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.LANCZOS),
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BICUBIC),
                 transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -1386,7 +1370,7 @@ class AspectRatioDataset(DreamBoothDataset):
             img = img.rotate(90, expand=True)
             x, y = img.size
             
-        if ratio_src > ratio_dst: # 1.1 > 0.9 512 < 768
+        if ratio_src > ratio_dst:
             new_w, new_h = (min_crop, int(min_crop * ratio_src)) if x<y else (int(min_crop * ratio_src), min_crop)
         elif ratio_src < ratio_dst:
             new_w, new_h = (max_crop, int(max_crop / ratio_src)) if x>y else (int(max_crop / ratio_src), max_crop)
@@ -1394,7 +1378,7 @@ class AspectRatioDataset(DreamBoothDataset):
             new_w, new_h = w, h
 
         image_transforms = transforms.Compose([
-            transforms.Resize((new_h, new_w), interpolation=transforms.InterpolationMode.LANCZOS),
+            transforms.Resize((new_h, new_w), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.CenterCrop((h, w)) if center_crop else transforms.RandomCrop((h, w)),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5])
@@ -1702,7 +1686,7 @@ def main(args):
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=metrics,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
     )
     
     print(get_gpu_ram())
@@ -1758,7 +1742,6 @@ def main(args):
 
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
-    unet.to(torch.float32)
 
     if args.xformers:
         unet.set_use_memory_efficient_attention_xformers(True)
@@ -1983,7 +1966,7 @@ def main(args):
         if "optimizer" in state_dict:
             optimizer.load_state_dict(state_dict["optimizer"])
 
-        if "scheduler" in state_dict and not args.reinit_scheduler:
+        if "scheduler" in state_dict:
             lr_scheduler.load_state_dict(state_dict["scheduler"])
 
             last_lr = state_dict["scheduler"]["_last_lr"]
@@ -2057,15 +2040,8 @@ def main(args):
 
             if args.use_ema:
                 ema_path = save_dir / "unet_ema"
-
-                ema_unet.store(unet_unwrapped.parameters())
-                ema_unet.copy_to(unet_unwrapped.parameters())
-
-                # with ema_unet.average_parameters(unet_unwrapped.parameters()):
-                try:
+                with ema_unet.average_parameters(unet_unwrapped.parameters()):
                     unet_unwrapped.save_pretrained(ema_path)
-                finally:
-                    ema_unet.restore(unet_unwrapped.parameters())
             
                 ema_unet.to("cpu", dtype=weight_dtype)
                 torch.cuda.empty_cache()
@@ -2124,7 +2100,7 @@ def main(args):
 
                 if args.rm_after_wandb_saved:
                     shutil.rmtree(save_dir)
-                    subprocess.run(["wandb", "artifact", "cache", "cleanup", "1G"])
+                    subprocess.run("wandb", "artifact", "cache", "cleanup", "1G")
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
