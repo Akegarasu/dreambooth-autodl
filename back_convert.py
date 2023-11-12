@@ -304,6 +304,8 @@ if __name__ == "__main__":
 
     # Put together new checkpoint
     state_dict = {**unet_state_dict, **vae_state_dict, **text_enc_dict}
+    state_dict["cond_stage_model.transformer.text_model.embeddings.position_ids"] = torch.Tensor([list(range(77))]).to(torch.int64)
+
     if args.half:
         state_dict = {k: v.half() for k, v in state_dict.items()}
     state_dict = {"state_dict": state_dict}
